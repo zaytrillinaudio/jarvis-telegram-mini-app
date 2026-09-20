@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#070b11" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="format-detection" content="telephone=no" />
+  <title>Jarvis · Mini Agent</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #070b11; --surface: #0f1420; --panel: #121a26;
+      --border: rgba(79,209,255,0.10); --border-hi: rgba(79,209,255,0.30);
+      --text: #e6edf3; --text-dim: #6b7785;
+      --accent: #22d3ee; --accent-dim: rgba(34,211,238,0.12);
+      --accent-2: #8b5cf6; --success: #3ddc97; --warn: #f5a524;
+      --radius: 10px;
+      --mono: 'SF Mono','JetBrains Mono','Fira Code',ui-monospace,monospace;
+      --sans: 'Inter','Segoe UI',system-ui,sans-serif;
+    }
+    .light {
+      --bg: #f4f4f5; --surface: #fff; --panel: #f9fafb;
+      --border: rgba(0,0,0,0.08); --border-hi: rgba(0,0,0,0.18);
+      --text: #09090b; --text-dim: #71717a;
+      --accent: #0891b2; --accent-dim: rgba(8,145,178,0.08);
+      --accent-2: #8b5cf6; --success: #16a34a; --warn: #ca8a04;
+    }
+    html, body, #root { height: 100%; overflow: hidden; }
+    body {
+      font-family: var(--sans); background: var(--bg); color: var(--text);
+      display: flex; -webkit-font-smoothing: antialiased;
+      overscroll-behavior: none; -webkit-tap-highlight-color: transparent;
+    }
+    #root::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background: radial-gradient(ellipse at 20% 0%, rgba(34,211,238,0.04) 0%, transparent 60%),
+                  radial-gradient(ellipse at 85% 100%, rgba(139,92,246,0.03) 0%, transparent 55%);
+    }
+    .app { display: flex; flex-direction: column; height: 100vh; width: 100vw; position: relative; z-index: 1; }
+    .topbar {
+      padding: 10px 14px 6px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+      background: rgba(7,11,17,0.4); backdrop-filter: blur(6px);
+      flex-shrink: 0; position: sticky; top: 0; z-index: 5;
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--success);
+      box-shadow: 0 0 6px var(--success); animation: pulse 2s ease-in-out infinite; flex-shrink: 0;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.85)} }
+    .topbar-title { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim); flex: 1; }
+    .topbar-title strong { color: var(--text); font-weight: 600; }
+    .topbar-right { display: flex; align-items: center; gap: 6px; }
+    .badge { font-family: var(--mono); font-size: 9px; padding: 3px 7px; border-radius: 999px; background: var(--accent-dim); color: var(--accent); border: 1px solid var(--border); letter-spacing: 0.04em; }
+    .scroll-wrap { flex: 1; overflow-y: auto; overscroll-behavior: contain; position: relative; -webkit-overflow-scrolling: touch; }
+    .scroll-wrap::-webkit-scrollbar { width: 3px; } .scroll-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .chat-inner { padding: 12px 14px 8px; display: flex; flex-direction: column; gap: 10px; min-height: 100%; }
+    .msg { display: flex; gap: 8px; max-width: 88%; animation: fadeSlide 250ms ease-out; }
+    @keyframes fadeSlide { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+    .avatar { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+    .avatar.jarvis { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #070b11; font-family: var(--mono); }
+    .avatar.me { background: #2d3748; color: var(--text); }
+    .bubble { padding: 9px 12px; border-radius: var(--radius); font-size: 13.5px; line-height: 1.5; word-break: break-word; }
+    .msg.jarvis .bubble { background: var(--surface); border: 1px solid var(--border); border-top-left-radius: 4px; color: var(--text); }
+    .msg.user .bubble { background: rgba(34,211,238,0.14); border: 1px solid rgba(34,211,238,0.40); border-top-right-radius: 4px; color: var(--text); }
+    .cursor { display: inline-block; width: 0.5ch; height: 1em; margin-left: 1px; background: var(--accent); vertical-align: text-bottom; animation: blink 1s steps(1,end) infinite; }
+    @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+    .typing-dots { display: flex; gap: 3px; padding: 1px 0; }
+    .typing-dots span { width: 4px; height: 4px; border-radius: 50%; background: var(--text-dim); animation: dotBounce 1.1s ease-in-out infinite; }
+    .typing-dots span:nth-child(2) { animation-delay: 0.18s; } .typing-dots span:nth-child(3) { animation-delay: 0.36s; }
+    @keyframes dotBounce { 0%,60%,100%{transform:translateY(0);opacity:0.3} 30%{transform:translateY(-3px);opacity:1} }
+    .welcome { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 20px 14px 40px; }
+    .welcome-icon { width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 0 0 24px rgba(34,211,238,0.12); }
+    .welcome h2 { font-size: 14px; font-weight: 600; color: var(--text); }
+    .welcome p { font-size: 12px; color: var(--text-dim); max-width: 240px; line-height: 1.5; }
+    .suggestions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin-top: 6px; }
+    .suggestion-chip { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--text-dim); font-size: 11px; cursor: pointer; transition: all 140ms; -webkit-tap-highlight-color: transparent; }
+    .suggestion-chip:hover, .suggestion-chip:active { color: var(--text); border-color: var(--border-hi); background: var(--accent-dim); }
+    .input-bar { padding: 8px 10px 10px; border-top: 1px solid var(--border); flex-shrink: 0; background: rgba(7,11,17,0.6); }
+    .input-row { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 3px 3px 3px 12px; transition: border-color 130ms; }
+    .input-row:focus-within { border-color: var(--border-hi); }
+    .input-row input { flex: 1; background: transparent; border: none; outline: none; color: var(--text); font-family: var(--sans); font-size: 13.5px; padding: 7px 0; min-width: 0; }
+    .input-row input::placeholder { color: var(--text-dim); }
+    .send-btn { width: 32px; height: 32px; border-radius: 50%; border: none; background: var(--accent); color: #070b11; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 130ms; flex-shrink: 0; -webkit-tap-highlight-color: transparent; }
+    .send-btn:hover { background: #67e8f9; } .send-btn:active { transform: scale(0.92); } .send-btn:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+    .send-btn svg { width: 14px; height: 14px; }
+    .system-sheet {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--panel); border-top: 1px solid var(--border);
+      border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,0.5);
+      z-index: 30; transform: translateY(100%);
+      transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+      max-height: 70vh; overflow: hidden; display: flex; flex-direction: column;
+    }
+    .system-sheet.open { transform: translateY(0); }
+    .sheet-handle { width: 36px; height: 4px; border-radius: 4px; background: var(--border); margin: 8px auto 4px; flex-shrink: 0; }
+    .sheet-header { padding: 4px 14px 10px; display: flex; align-items: center; justify-content: space-between; font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); flex-shrink: 0; }
+    .sheet-body { flex: 1; overflow-y: auto; padding: 0 14px 14px; display: flex; flex-direction: column; gap: 10px; overscroll-behavior: contain; }
+    .sheet-body::-webkit-scrollbar { width: 2px; } .sheet-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .sheet-section-title { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 4px; }
+    .stat-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+    .stat-label { font-family: var(--mono); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat-value { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text); }
+    .stat-value.accent { color: var(--accent); } .stat-value.green { color: var(--success); } .stat-value.purple { color: var(--accent-2); }
+    .tool-list { display: flex; flex-direction: column; gap: 5px; }
+    .tool-chip { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 8px; background: rgba(139,92,246,0.06); border: 1px solid rgba(139,92,246,0.12); cursor: pointer; transition: all 130ms; font-size: 12px; color: var(--text); -webkit-tap-highlight-color: transparent; }
+    .tool-chip:active { transform: scale(0.98); background: rgba(139,92,246,0.14); }
+    .tool-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-2); flex-shrink: 0; }
+    .log-entry { font-family: var(--mono); font-size: 10px; padding: 4px 7px; border-radius: 4px; background: rgba(0,0,0,0.2); color: var(--text-dim); line-height: 1.45; }
+    .log-entry .ts { color: var(--accent-2); } .log-entry .ok { color: var(--success); } .log-entry .warn { color: var(--warn); }
+    @media (min-width: 768px) {
+      .app { flex-direction: row; }
+      .topbar { display: flex; }
+      .topbar-right { margin-left: auto; }
+      .scroll-wrap { flex: 1; }
+      .system-sheet { position: absolute; right: 0; top: 0; bottom: 0; left: auto; width: 260px; border-radius: 0; border-top: none; border-left: 1px solid var(--border); box-shadow: -4px 0 20px rgba(0,0,0,0.4); transform: translateX(100%); max-height: none; }
+      .system-sheet.open { transform: translateX(0); } .sheet-handle { display: none; }
+    }
+    @media (max-width: 767px) { .msg { max-width: 92%; } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Main app script runs FIRST (works standalone, no Telegram SDK needed) -->
+  <script>
+    // ── Telegram helpers (safe if SDK missing) ──
+    const T = (window.Telegram && window.Telegram.WebApp) ? window.Telegram.WebApp : {
+      sendData: () => {},
+      onEvent: () => {},
+      BackButton: { onClick: () => {}, offClick: () => {} },
+      viewport: { expand: () => {}, resize: () => {} },
+      MainButton: {
+        setText: () => {},
+        show: () => {},
+        hide: () => {},
+        onPress: () => {},
+        disable: () => {},
+        enable: () => {},
+      },
+      HapticFeedback: { impactLight: () => {}, impactMedium: () => {} },
+      initDataUnsafe: {},
+      close: () => window.close(),
+    };
+
+    // ── state ──
+    const state = {
+      messages: [],
+      streaming: false,
+      streamBuffer: '',
+      systemSheetOpen: false,
+      activeAgent: 'jarvis',
+    };
+
+    const tools = [
+      { id: 'search', label: 'Web Search', dot: '#22d3ee' },
+      { id: 'browser', label: 'Browser Control', dot: '#8b5cf6' },
+      { id: 'files', label: 'File System', dot: '#3ddc97' },
+      { id: 'code', label: 'Code Interpreter', dot: '#f5a524' },
+      { id: 'memory', label: 'Memory Bank', dot: '#6b7785' },
+    ];
+    const agentLabel = { jarvis: 'JARVIS', me: 'YOU' };
+    const root = document.getElementById('root');
+
+    function el(tag, attrs = {}, children = []) {
+      const e = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) {
+        if (k === 'className') e.className = v;
+        else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
+        else if (k === 'disabled') { if (v) e.setAttribute(k, ''); else e.removeAttribute(k); }
+        else if (typeof v === 'function' && k.toLowerCase().startsWith('on')) {
+          e.addEventListener(k.substring(2).toLowerCase(), v);
+        }
+        else e.setAttribute(k, v);
+      }
+      for (const c of children) e.append(typeof c === 'string' ? document.createTextNode(c) : c);
+      return e;
+    }
+    function timeStr() { return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+
+    function renderSystemSheet() {
+      const sheet = el('div', { className: `system-sheet${state.systemSheetOpen ? ' open' : ''}` });
+      sheet.appendChild(el('div', { className: 'sheet-handle' }));
+      const closeBtn = el('button', { className: 'sheet-header' }, [
+        el('span', {
+          style: { cursor: 'pointer', background: 'none', border: 'none', color: 'var(--text-dim)', fontSize: '10px', padding: 0, letterSpacing: '0.08em' },
+          onClick: () => {
+            state.systemSheetOpen = !state.systemSheetOpen;
+            T.HapticFeedback && T.HapticFeedback.impactLight();
+            render(); T.viewport && T.viewport.resize();
+          },
+        }, ['SYSTEM PANEL']),
+        el('button', {
+          style: { background: 'none', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: '14px', padding: 0 },
+          onClick: () => {
+            if (state.systemSheetOpen) {
+              state.systemSheetOpen = false;
+              T.HapticFeedback && T.HapticFeedback.impactLight();
+              render(); T.viewport && T.viewport.resize();
+            }
+          },
+        }, [el('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 2 }, [el('path', { d: 'M18 6L6 18M6 6l12 12' })])]),
+      ]);
+      const convoCount = state.messages.length;
+      const toolCalls = state.messages.filter(m => m.toolCalls).length;
+      sheet.appendChild(closeBtn);
+      sheet.appendChild(el('div', { className: 'sheet-body' }, [
+        el('div', { className: 'stat-row' }, [
+          el('span', { className: 'stat-label' }, ['Agent']),
+          el('span', { className: 'stat-value accent' }, [agentLabel[state.activeAgent]]),
+        ]),
+        el('div', { className: 'stat-row' }, [
+          el('span', { className: 'stat-label' }, ['Conversation']),
+          el('span', { className: 'stat-value' }, [convoCount.toString(), el('span', { style: { fontSize: '10px', color: 'var(--text-dim)' } }, [' msgs'])]),
+        ]),
+        el('div', { className: 'stat-row' }, [
+          el('span', { className: 'stat-label' }, ['Tool Calls']),
+          el('span', { className: 'stat-value green' }, [toolCalls.toString(), el('span', { style: { fontSize: '10px', color: 'var(--text-dim)' } }, [' made'])]),
+        ]),
+        el('div', { className: 'stat-row' }, [
+          el('span', { className: 'stat-label' }, ['Latency']),
+          el('span', { className: 'stat-value purple' }, ['—', el('span', { style: { fontSize: '10px', color: 'var(--text-dim)' } }, ['ms'])]),
+        ]),
+        el('div', { style: { marginTop: '10px' } }, [
+          el('div', { className: 'sheet-section-title' }, ['TOOLS']),
+          el('div', { className: 'tool-list' }, tools.map(t => el('div', {
+            className: 'tool-chip',
+            onClick: () => {
+              T.HapticFeedback && T.HapticFeedback.impactMedium();
+              appendMessage('jarvis', `[tool call] ${t.label} — ready`);
+              if (state.systemSheetOpen) {
+                state.systemSheetOpen = false;
+                render(); T.viewport && T.viewport.resize();
+              }
+            },
+          }, [
+            el('span', { className: 'dot', style: { background: t.dot } }, []),
+            el('span', {}, [t.label]),
+          ]))),
+        ]),
+        el('div', { style: { marginTop: '6px' } }, [
+          el('div', { className: 'sheet-section-title' }, ['EVENT LOG']),
+          el('div', {}, state.messages.slice(-6).map(m => el('div', { className: 'log-entry' }, [
+            `<span class="ts">${m.timestamp}</span> ${m.role === 'user' ? '<span class="warn">IN</span>' : '<span class="ok">OUT</span>'} ${m.text.slice(0, 58)}`,
+          ])).reverse()),
+        ]),
+      ]));
+      return sheet;
+    }
+
+    function renderChat() {
+      const wrap = el('div', { className: 'scroll-wrap' });
+      const inner = el('div', { className: 'chat-inner' });
+      if (state.messages.length === 0 && !state.streaming) {
+        inner.appendChild(el('div', { className: 'welcome' }, [
+          el('div', { className: 'welcome-icon' }, ['🧠']),
+          el('h2', {}, ['Jarvis Mini Agent']),
+          el('p', {}, ['Telegram command interface for your Hermes Jarvis agent.']),
+          el('div', { className: 'suggestions' }, [
+            'What can you do?', 'Run a web search', 'List available tools', 'Tell me about yourself',
+          ].map(text => el('button', { className: 'suggestion-chip', onClick: () => handleSend(text) }, [text]))),
+        ]));
+        wrap.appendChild(inner);
+        return wrap;
+      }
+      for (const m of state.messages) inner.appendChild(renderMessage(m));
+      if (state.streaming) inner.appendChild(renderStreamingBubble());
+      wrap.appendChild(inner);
+      return wrap;
+    }
+
+    function renderMessage(m) {
+      const isMe = m.role === 'user';
+      return el('div', { className: `msg ${isMe ? 'user' : 'jarvis'}` }, [
+        el('div', { className: `avatar ${isMe ? 'me' : 'jarvis'}` }, isMe ? 'YOU' : 'J'),
+        el('div', {}, [el('div', { className: 'bubble' }, [document.createTextNode(m.text)])]),
+      ]);
+    }
+
+    function renderStreamingBubble() {
+      return el('div', { className: 'msg jarvis' }, [
+        el('div', { className: 'avatar jarvis' }, 'J'),
+        el('div', {}, [el('div', { className: 'bubble' }, [el('div', { className: 'typing-dots' }, [el('span', {}), el('span', {}), el('span', {})])])]),
+      ]);
+    }
+
+    function renderInput() {
+      const bar = el('div', { className: 'input-bar' });
+      const row = el('div', { className: 'input-row' });
+      const input = el('input', {
+        type: 'text', placeholder: 'Ask Jarvis…', autocomplete: 'off', autocapitalize: 'off', spellcheck: false,
+        onkeydown: (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSend(input.value);
+            input.value = '';
+            T.HapticFeedback && T.HapticFeedback.impactLight();
+          }
+        },
+      });
+      const sendBtn = el('button', {
+        className: 'send-btn', disabled: state.streaming, title: 'Send',
+        onClick: () => {
+          const v = input.value.trim();
+          if (v && !state.streaming) { handleSend(v); input.value = ''; }
+        },
+      }, [el('svg', { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, [
+        el('line', { x1: '22', y1: '2', x2: '11', y2: '13' }),
+        el('polygon', { points: '22 2 15 22 11 13 2 9 22 2' }),
+      ])]);
+      row.append(input, sendBtn);
+      bar.appendChild(row);
+      return bar;
+    }
+
+    function renderTopbar() {
+      return el('header', { className: 'topbar' }, [
+        el('div', { className: 'status-dot' }),
+        el('div', { className: 'topbar-title' }, ['<strong>JARVIS</strong> · Telegram Mini App']),
+        el('div', { className: 'topbar-right' }, [el('span', { className: 'badge' }, ['BOT ONLINE'])]),
+      ]);
+    }
+
+    function render() {
+      root.innerHTML = '';
+      const app = el('div', { className: 'app' });
+      app.append(renderTopbar(), renderChat(), renderInput(), renderSystemSheet());
+      root.appendChild(app);
+    }
+
+    function appendMessage(role, text) {
+      state.messages.push({ role, text, timestamp: timeStr(), toolCalls: false });
+    }
+
+    function simulateResponse(userText) {
+      if (state.streaming) return;
+      state.streaming = true;
+      state.streamBuffer = '';
+      render();
+      const reply = "Mini App preview received your command. Open @MYREALBASAGENTbot to execute it through Hermes.";
+      let idx = 0;
+      function tick() {
+        if (idx < reply.length) {
+          state.streamBuffer += reply[idx];
+          idx++;
+          render();
+          setTimeout(tick, 20 + Math.random() * 16);
+        } else {
+          state.streaming = false;
+          appendMessage('jarvis', state.streamBuffer);
+          state.streamBuffer = '';
+          render();
+        }
+      }
+      tick();
+    }
+
+    function handleSend(text) {
+      if (!text.trim() || state.streaming) return;
+      appendMessage('user', text);
+      render();
+      T.HapticFeedback && T.HapticFeedback.impactLight();
+      setTimeout(() => simulateResponse(text), 250 + Math.random() * 350);
+    }
+
+    function toggleSystemSheet() {
+      state.systemSheetOpen = !state.systemSheetOpen;
+      T.HapticFeedback && T.HapticFeedback.impactLight();
+      render();
+      T.viewport && T.viewport.resize();
+    }
+
+    // ── boot (always runs, even without Telegram SDK) ──
+    render();
+
+    // ── Telegram SDK enhancement (runs only if SDK loads) ──
+    if (window.Telegram && window.Telegram.WebApp) {
+      const wa = window.Telegram.WebApp;
+      wa.ready();
+      wa.expand();
+      try { wa.triggerInlineKeyboardHighlighted(); } catch (_) {}
+      const theme = wa.themeParams || '';
+      if (theme.includes('bg_color')) document.documentElement.classList.add('light');
+      wa.onEvent('themeChanged', (p) => {
+        if (p.bg_color && p.bg_color.toLowerCase() !== '#070b11') {
+          document.documentElement.classList.add('light');
+        } else {
+          document.documentElement.classList.remove('light');
+        }
+      });
+      T.MainButton.setText('Open System Panel');
+      T.MainButton.show();
+      T.MainButton.onPress(() => toggleSystemSheet());
+      T.BackButton.onClick(() => {
+        if (state.systemSheetOpen) {
+          state.systemSheetOpen = false;
+          render(); T.viewport && T.viewport.resize();
+          T.HapticFeedback && T.HapticFeedback.impactLight();
+          return;
+        }
+        T.BackButton.offClick();
+        T.close();
+      });
+      let resizeTimer;
+      window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => { T.viewport && T.viewport.resize(); render(); }, 120);
+      });
+    }
+  </script>
+
+  <!-- Telegram WebApp SDK: loaded after app is already running -->
+  <script src="https://telegram.org/js/telegram-web-app.js" crossorigin="anonymous"></script>
+</body>
+</html>
