@@ -390,7 +390,9 @@
 
     async function connectBridge() {
       try {
-        const configResponse = await fetch(`bridge.json?ts=${Date.now()}`, { cache: 'no-store' });
+        const remoteConfig = 'https://zaytrillinaudio.github.io/jarvis-telegram-mini-app/bridge.json';
+        let configResponse = await fetch(`${remoteConfig}?ts=${Date.now()}`, { cache: 'no-store' });
+        if (!configResponse.ok) configResponse = await fetch(`bridge.json?ts=${Date.now()}`, { cache: 'no-store' });
         const config = await configResponse.json();
         if (!config.endpoint || !config.endpoint.startsWith('https://')) throw new Error('No HTTPS endpoint');
         const health = await fetch(`${config.endpoint}/health`, { cache: 'no-store' });
