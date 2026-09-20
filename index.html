@@ -8,6 +8,8 @@
   <meta name="format-detection" content="telephone=no" />
   <title>Jarvis · Mini Agent</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.1.0/dist/model-viewer.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -37,6 +39,16 @@
       content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
       background: radial-gradient(ellipse at 20% 0%, rgba(34,211,238,0.04) 0%, transparent 60%),
                   radial-gradient(ellipse at 85% 100%, rgba(139,92,246,0.03) 0%, transparent 55%);
+    }
+    #jarvis-environment {
+      position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 0;
+      opacity: .46; filter: saturate(1.15) contrast(1.08);
+      --poster-color: transparent; background: #02050a;
+    }
+    .environment-vignette {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: linear-gradient(180deg, rgba(2,5,10,.28), rgba(2,5,10,.78)),
+                  radial-gradient(circle at 50% 42%, transparent 0 18%, rgba(2,5,10,.62) 74%);
     }
     .app { display: flex; flex-direction: column; height: 100vh; width: 100vw; position: relative; z-index: 1; }
     .topbar {
@@ -123,6 +135,13 @@
   </style>
 </head>
 <body>
+  <model-viewer id="jarvis-environment" src="assets/jarvis-command-chamber.glb"
+    alt="Interactive Jarvis holographic command chamber"
+    camera-controls auto-rotate rotation-per-second="5deg" interaction-prompt="none"
+    camera-orbit="42deg 68deg 17m" min-camera-orbit="auto 45deg 10m"
+    max-camera-orbit="auto 82deg 24m" shadow-intensity="1" exposure="1.15">
+  </model-viewer>
+  <div class="environment-vignette"></div>
   <div id="root"></div>
 
   <!-- Main app script runs FIRST (works standalone, no Telegram SDK needed) -->
@@ -153,6 +172,8 @@
       streamBuffer: '',
       systemSheetOpen: false,
       activeAgent: 'jarvis',
+      bridgeEndpoint: '',
+      bridgeReady: false,
     };
 
     const tools = [
@@ -320,7 +341,7 @@
       return el('header', { className: 'topbar' }, [
         el('div', { className: 'status-dot' }),
         el('div', { className: 'topbar-title' }, ['<strong>JARVIS</strong> · Telegram Mini App']),
-        el('div', { className: 'topbar-right' }, [el('span', { className: 'badge' }, ['BOT ONLINE'])]),
+        el('div', { className: 'topbar-right' }, [el('span', { className: 'badge' }, [state.bridgeReady ? 'HERMES LINKED' : 'BRIDGE CHECKING'])]),
       ]);
     }
 
@@ -335,35 +356,29 @@
       state.messages.push({ role, text, timestamp: timeStr(), toolCalls: false });
     }
 
-    function simulateResponse(userText) {
-      if (state.streaming) return;
-      state.streaming = true;
-      state.streamBuffer = '';
-      render();
-      const reply = "Mini App preview received your command. Open @MYREALBASAGENTbot to execute it through Hermes.";
-      let idx = 0;
-      function tick() {
-        if (idx < reply.length) {
-          state.streamBuffer += reply[idx];
-          idx++;
-          render();
-          setTimeout(tick, 20 + Math.random() * 16);
-        } else {
-          state.streaming = false;
-          appendMessage('jarvis', state.streamBuffer);
-          state.streamBuffer = '';
-          render();
-        }
-      }
-      tick();
-    }
-
-    function handleSend(text) {
+    async function handleSend(text) {
       if (!text.trim() || state.streaming) return;
       appendMessage('user', text);
+      state.streaming = true;
       render();
       T.HapticFeedback && T.HapticFeedback.impactLight();
-      setTimeout(() => simulateResponse(text), 250 + Math.random() * 350);
+      try {
+        if (!state.bridgeEndpoint) throw new Error('Secure bridge is not online yet. Try again in a moment.');
+        if (!T.initData) throw new Error('Open this Mini App inside Telegram to authenticate commands.');
+        const response = await fetch(`${state.bridgeEndpoint}/v1/command`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ command: text.trim(), init_data: T.initData }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) throw new Error(payload.error || `Bridge error ${response.status}`);
+        appendMessage('jarvis', payload.response || 'Task completed.');
+      } catch (error) {
+        appendMessage('jarvis', `Unable to run that task: ${error.message}`);
+      } finally {
+        state.streaming = false;
+        render();
+      }
     }
 
     function toggleSystemSheet() {
@@ -373,8 +388,25 @@
       T.viewport && T.viewport.resize();
     }
 
-    // ── boot (always runs, even without Telegram SDK) ──
+    async function connectBridge() {
+      try {
+        const configResponse = await fetch(`bridge.json?ts=${Date.now()}`, { cache: 'no-store' });
+        const config = await configResponse.json();
+        if (!config.endpoint || !config.endpoint.startsWith('https://')) throw new Error('No HTTPS endpoint');
+        const health = await fetch(`${config.endpoint}/health`, { cache: 'no-store' });
+        if (!health.ok) throw new Error('Bridge health check failed');
+        state.bridgeEndpoint = config.endpoint.replace(/\/$/, '');
+        state.bridgeReady = true;
+      } catch (_) {
+        state.bridgeEndpoint = '';
+        state.bridgeReady = false;
+      }
+      render();
+    }
+
+    // ── boot (works standalone; command execution requires Telegram auth) ──
     render();
+    connectBridge();
 
     // ── Telegram SDK enhancement (runs only if SDK loads) ──
     if (window.Telegram && window.Telegram.WebApp) {
@@ -412,7 +444,5 @@
     }
   </script>
 
-  <!-- Telegram WebApp SDK: loaded after app is already running -->
-  <script src="https://telegram.org/js/telegram-web-app.js" crossorigin="anonymous"></script>
 </body>
 </html>

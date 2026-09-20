@@ -1,5 +1,8 @@
 # Jarvis Telegram Mini App
 
-Telegram Mini App frontend for `@MYREALBASAGENTbot`.
+Telegram Mini App frontend for `@MYREALBASAGENTbot`, with a Blender-authored
+3D command chamber optimized for Telegram WebViews.
 
-The public page intentionally contains no bot token or Hermes credentials. Agent execution remains in the authenticated Telegram bot until an authenticated HTTPS bridge is deployed.
+The browser never receives the bot token. Commands go through the HTTPS bridge,
+which validates Telegram-signed `initData`, checks the existing Hermes Telegram
+allowlist, and rate-limits requests before invoking the local agent.
